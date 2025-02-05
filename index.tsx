@@ -2,31 +2,43 @@ const { AccountFilterFlags } = require("tigerbeetle-node");
 const { createClient } = require("tigerbeetle-node");
 const { randomFillSync } = require("crypto");
 const { resolve4 } = require("dns/promises");
-
+const http = require("http");
+const { URL } = require('url');
 const TB_ADDRESSES = process.env.TB_ADDRESSES;
 const TB_PORT = process.env.TB_PORT;
 
 const hostnames = TB_ADDRESSES.split(",");
 
-const addresses = (await Promise.all(hostnames.map(async (hostname) => {
-  const ip = await resolve4(hostname);
+// const addresses = (await Promise.all(hostnames.map(async (hostname) => {
+//   const ip = await resolve4(hostname);
 
-  console.log(hostname, ip);
-  if (ip.length >= 1) {
-    return [`${ip[0]}:${TB_PORT}`];
-  }
+//   console.log(hostname, ip);
+//   if (ip.length >= 1) {
+//     return [`${ip[0]}:${TB_PORT}`];
+//   }
 
-  return [];
-}))).flatMap((i) => i);
+//   return [];
+// }))).flatMap((i) => i);
 
-console.log(addresses);
+const getAddresses = async () => {
+  return (await Promise.all(
+    hostnames.map(async (hostname) => {
+      console.log("Getting ip of, ", hostname)
+      const ip = await resolve4(hostname);
 
-const client = createClient({
-    cluster_id: 0n,
-    replica_addresses: addresses,
-  });
+      console.log(hostname, ip);
+      if (ip.length >= 1) {
+        return [`${ip[0]}:${TB_PORT}`];
+      }
 
-console.log(client)
+      return [];
+    })
+  )).flatMap((i) => i);
+}
+
+let addresses
+let client
+
 
 const account1 = {
     id: 1n, // TigerBeetle time-based ID.
@@ -60,7 +72,7 @@ const account2 = {
   timestamp: 0n,
 };
   
-const account_errors = await client.createAccounts([account1, account2]);
+
 
 // const accounts = await client.lookupAccounts([1n]);
 
@@ -74,7 +86,7 @@ let idLastBuffer = new ArrayBuffer(16);
  * Based on {@link https://github.com/ulid/spec}, IDs returned are guaranteed to be monotonically
  * increasing.
  */
-export function id(): bigint {
+function id(): bigint {
   // Ensure timestamp monotonically increases and generate a new random on each new timestamp.
   let timestamp = Date.now()
   if (timestamp <= idLastTimestamp) {
@@ -108,53 +120,81 @@ export function id(): bigint {
   return (hi << 64n) | lo
 }
 
-const server = Bun.serve({
-    port: 3000,
-    async fetch(req) {
-      const path = new URL(req.url).pathname;
-  
-      // respond with text/html
-      if (path === "/") {
+
+
+
+const server = http.createServer(async (req, res) => {
+    const path = new URL(req.url, `http://${req.headers.host}`).pathname;
+
+    if (path === "/") {
         const filter = {
-          account_id: 1n,
-          user_data_128: 0n, // No filter by UserData.
-          user_data_64: 0n,
-          user_data_32: 0,
-          code: 0, // No filter by Code.
-          timestamp_min: 0n, // No filter by Timestamp.
-          timestamp_max: 0n, // No filter by Timestamp.
-          limit: 10, // Limit to ten balances at most.
-          flags: AccountFilterFlags.debits | // Include transfer from the debit side.
-            AccountFilterFlags.credits | // Include transfer from the credit side.
-            AccountFilterFlags.reversed, // Sort by timestamp in reverse-chronological order.
+            account_id: 1n,
+            user_data_128: 0n,
+            user_data_64: 0n,
+            user_data_32: 0,
+            code: 0,
+            timestamp_min: 0n,
+            timestamp_max: 0n,
+            limit: 10,
+            flags: AccountFilterFlags.debits |
+                AccountFilterFlags.credits |
+                AccountFilterFlags.reversed,
         };
         const txs = await client.getAccountTransfers(filter);
-
         const txsj = JSON.stringify(txs, (_, v) => typeof v === 'bigint' ? v.toString() : v);
-        return Response.json(txsj);
-      };
-  
-      if (path === "/trx") {
-        const trx = {
-          id: id(), // TigerBeetle time-based ID.
-          debit_account_id: 1n,
-          credit_account_id: 2n,
-          amount: 10n,
-          pending_id: 0n,
-          user_data_128: 0n,
-          user_data_64: 0n,
-          user_data_32: 0,
-          timeout: 0,
-          ledger: 1,
-          code: 720,
-          flags: 0,
-          timestamp: 0n,
-        }
-        await client.createTransfers([trx])
+        
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(txsj);
+        return;
+    }
 
-        return new Response(`${trx.id}`);
-      }
-    },
+    if (path === "/trx") {
+        const trx = {
+            id: id(),
+            debit_account_id: 1n,
+            credit_account_id: 2n,
+            amount: 10n,
+            pending_id: 0n,
+            user_data_128: 0n,
+            user_data_64: 0n,
+            user_data_32: 0,
+            timeout: 0,
+            ledger: 1,
+            code: 720,
+            flags: 0,
+            timestamp: 0n,
+        };
+        await client.createTransfers([trx]);
+        
+        res.writeHead(200, { 'Content-Type': 'text/plain' });
+        res.end(`${trx.id}`);
+        return;
+    }
+
+    res.writeHead(404, { 'Content-Type': 'text/plain' });
+    res.end('Not Found');
+});
+
+  (async () => {
+  addresses = await getAddresses();
+  console.log(addresses);
+  client = createClient({
+    cluster_id: 0n,
+    replica_addresses: addresses,
   });
+
+  console.log(client)
   
-  console.log(`Listening on localhost:${server.port}`);
+  const getAccountErrors = async () => {
+  return await client.createAccounts([account1, account2]);
+  }
+
+
+  const account_errors = await getAccountErrors();
+
+
+server.listen(TB_PORT, () => {
+    console.log(`Listening on localhost:${TB_PORT}`);
+});
+
+})();
