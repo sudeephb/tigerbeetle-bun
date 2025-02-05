@@ -26,12 +26,18 @@ const getAddresses = async () => {
 }
 
 let addresses
-let client
+// let client
 
-(async () => {
-  addresses = await getAddresses();
-  console.log(addresses);
-})
+addresses = await getAddresses();
+console.log(addresses);
+
+
+function sleep(ms) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+await sleep(10000)
 
 
 // const account1 = {
