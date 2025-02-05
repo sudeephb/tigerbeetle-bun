@@ -86,7 +86,7 @@ let idLastBuffer = new ArrayBuffer(16);
  * Based on {@link https://github.com/ulid/spec}, IDs returned are guaranteed to be monotonically
  * increasing.
  */
-function id(): bigint {
+function id() {
   // Ensure timestamp monotonically increases and generate a new random on each new timestamp.
   let timestamp = Date.now()
   if (timestamp <= idLastTimestamp) {
