@@ -1,11 +1,15 @@
-const { AccountFilterFlags } = require("tigerbeetle-node");
-const { createClient } = require("tigerbeetle-node");
-const { randomFillSync } = require("crypto");
-const { resolve4 } = require("dns/promises");
-const http = require("http");
-const { URL } = require('url');
+// const { AccountFilterFlags } = require("tigerbeetle-node");
+// const { createClient } = require("tigerbeetle-node");
+// const { randomFillSync } = require("crypto");
+// const { resolve4 } = require("dns/promises");
+// const http = require("http");
+// const { URL } = require('url');
+
+import { resolve4 } from "dns/promises";
+
 const TB_ADDRESSES = process.env.TB_ADDRESSES;
 const TB_PORT = process.env.TB_PORT;
+
 
 const hostnames = TB_ADDRESSES.split(",");
 
